@@ -7,8 +7,10 @@
 *.dll
 *.so
 *.dylib
-
+.idea/
 # Test binary, built with `go test -c`
+skills.json
+skills.lock.json
 *.test
 
 # Code coverage profiles and other test artifacts

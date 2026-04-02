@@ -3,11 +3,14 @@ package add
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/salaboy/skills-cli/pkg/oci"
+	"github.com/salaboy/skills-cli/pkg/skill"
 	"github.com/salaboy/skills-cli/pkg/tui"
 	"github.com/salaboy/skills-cli/pkg/tui/components"
 )
@@ -19,6 +22,7 @@ const (
 	phaseResolving
 	phasePulling
 	phaseExtracting
+	phaseManifest
 	phaseDone
 	phaseError
 )
@@ -28,23 +32,28 @@ type pullErrMsg struct{ err error }
 
 // Model is the Bubble Tea model for the add/install workflow.
 type Model struct {
-	phase     phase
-	spinner   spinner.Model
-	ref       string
-	outputDir string
-	plainHTTP bool
-	result    *oci.PullResult
-	err       error
+	phase      phase
+	spinner    spinner.Model
+	ref        string
+	outputDir  string
+	projectDir string
+	plainHTTP  bool
+	result     *oci.PullResult
+	err        error
 }
 
 // NewModel creates a new add TUI model.
-func NewModel(ref, outputDir string, plainHTTP bool) Model {
+func NewModel(ref, outputDir, projectDir string, plainHTTP bool) Model {
+	if projectDir == "" {
+		projectDir = "."
+	}
 	return Model{
-		phase:     phaseInit,
-		spinner:   components.NewSpinner(),
-		ref:       ref,
-		outputDir: outputDir,
-		plainHTTP: plainHTTP,
+		phase:      phaseInit,
+		spinner:    components.NewSpinner(),
+		ref:        ref,
+		outputDir:  outputDir,
+		projectDir: projectDir,
+		plainHTTP:  plainHTTP,
 	}
 }
 
@@ -96,6 +105,7 @@ func (m Model) View() string {
 		{"Resolving reference", phaseResolving},
 		{"Pulling artifact", phasePulling},
 		{"Extracting skill", phaseExtracting},
+		{"Updating skills.json & skills.lock.json", phaseManifest},
 	}
 
 	for _, p := range phases {
@@ -144,6 +154,50 @@ func (m Model) startPull() tea.Cmd {
 		if err != nil {
 			return pullErrMsg{err: err}
 		}
+
+		// Update skills.json
+		if err := updateManifest(m.projectDir, result); err != nil {
+			return pullErrMsg{err: fmt.Errorf("updating skills.json: %w", err)}
+		}
+
+		// Update skills.lock.json
+		if err := updateLockFile(m.projectDir, result); err != nil {
+			return pullErrMsg{err: fmt.Errorf("updating skills.lock.json: %w", err)}
+		}
+
 		return pullResultMsg{result: result}
 	}
+}
+
+func updateManifest(projectDir string, result *oci.PullResult) error {
+	m, err := skill.LoadManifest(projectDir)
+	if err != nil {
+		return err
+	}
+	skill.AddToManifest(m, result.Name, result.Source(), result.Version)
+	return skill.SaveManifest(projectDir, m)
+}
+
+func updateLockFile(projectDir string, result *oci.PullResult) error {
+	l, err := skill.LoadLock(projectDir)
+	if err != nil {
+		return err
+	}
+
+	extractPath := filepath.Join(".agents", "skills", result.Name)
+	entry := skill.LockedSkill{
+		Name: result.Name,
+		Path: extractPath,
+		Source: skill.LockSource{
+			Registry:   result.Registry,
+			Repository: result.Repository,
+			Tag:        result.Tag,
+			Digest:     result.Digest,
+			Ref:        result.FullRef(),
+		},
+		InstalledAt: time.Now().UTC().Format(time.RFC3339),
+	}
+
+	skill.AddToLock(l, entry)
+	return skill.SaveLock(projectDir, l)
 }

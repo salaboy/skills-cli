@@ -29,10 +29,23 @@ type PullOptions struct {
 
 // PullResult is returned after a successful pull.
 type PullResult struct {
-	Name      string
-	Version   string
-	Digest    string
-	ExtractTo string
+	Name       string
+	Version    string
+	Digest     string
+	ExtractTo  string
+	Registry   string // e.g., "ghcr.io"
+	Repository string // e.g., "org/skills/my-skill"
+	Tag        string // e.g., "1.0.0"
+}
+
+// FullRef returns the fully-qualified digest-pinned OCI reference.
+func (r *PullResult) FullRef() string {
+	return fmt.Sprintf("%s/%s:%s@%s", r.Registry, r.Repository, r.Tag, r.Digest)
+}
+
+// Source returns the OCI repository reference without tag or digest (for skills.json).
+func (r *PullResult) Source() string {
+	return fmt.Sprintf("%s/%s", r.Registry, r.Repository)
 }
 
 // Pull fetches a skill artifact from a remote registry and extracts it.
@@ -41,28 +54,15 @@ func Pull(ctx context.Context, opts PullOptions) (*PullResult, error) {
 		opts.OnStatus("Resolving reference")
 	}
 
-	// Parse the reference to separate repo from tag/digest
 	ref := opts.Reference
+	registry, repository, tag := parseReference(ref)
+
 	repo, err := remote.NewRepository(ref)
 	if err != nil {
 		return nil, fmt.Errorf("creating remote repository: %w", err)
 	}
 	repo.PlainHTTP = opts.PlainHTTP
 	repo.Client = NewAuthClient()
-
-	// Extract tag from reference
-	tag := "latest"
-	if idx := strings.LastIndex(ref, ":"); idx > 0 {
-		possibleTag := ref[idx+1:]
-		// Check it's not a port number (contains /)
-		if !strings.Contains(possibleTag, "/") {
-			tag = possibleTag
-		}
-	}
-	// Handle digest references
-	if idx := strings.LastIndex(ref, "@"); idx > 0 {
-		tag = ref[idx+1:]
-	}
 
 	if opts.OnStatus != nil {
 		opts.OnStatus("Pulling artifact")
@@ -141,11 +141,52 @@ func Pull(ctx context.Context, opts PullOptions) (*PullResult, error) {
 	extractPath := filepath.Join(outputDir, skillConfig.Name)
 
 	return &PullResult{
-		Name:      skillConfig.Name,
-		Version:   skillConfig.Version,
-		Digest:    desc.Digest.String(),
-		ExtractTo: extractPath,
+		Name:       skillConfig.Name,
+		Version:    skillConfig.Version,
+		Digest:     desc.Digest.String(),
+		ExtractTo:  extractPath,
+		Registry:   registry,
+		Repository: repository,
+		Tag:        tag,
 	}, nil
+}
+
+// parseReference splits an OCI reference into registry, repository, and tag.
+// e.g., "ghcr.io/org/skills/my-skill:1.0.0" -> ("ghcr.io", "org/skills/my-skill", "1.0.0")
+// e.g., "localhost:5000/my-skill:1.0.0" -> ("localhost:5000", "my-skill", "1.0.0")
+func parseReference(ref string) (registry, repository, tag string) {
+	tag = "latest"
+
+	// Handle digest references
+	if idx := strings.LastIndex(ref, "@"); idx > 0 {
+		tag = ref[idx+1:]
+		ref = ref[:idx]
+	} else if idx := strings.LastIndex(ref, ":"); idx > 0 {
+		possibleTag := ref[idx+1:]
+		// If it doesn't contain a slash, it's a tag not a port
+		if !strings.Contains(possibleTag, "/") {
+			tag = possibleTag
+			ref = ref[:idx]
+		}
+	}
+
+	// Split registry from repository
+	// The registry is the first component if it contains a dot or colon, or is "localhost"
+	parts := strings.SplitN(ref, "/", 2)
+	if len(parts) == 1 {
+		// No slash, entire ref is the repository on docker.io
+		registry = "docker.io"
+		repository = parts[0]
+	} else if strings.Contains(parts[0], ".") || strings.Contains(parts[0], ":") || parts[0] == "localhost" {
+		registry = parts[0]
+		repository = parts[1]
+	} else {
+		// No dot/colon in first part, treat as docker.io namespace
+		registry = "docker.io"
+		repository = ref
+	}
+
+	return registry, repository, tag
 }
 
 // extractTarGz extracts a tar.gz stream to the given output directory.
