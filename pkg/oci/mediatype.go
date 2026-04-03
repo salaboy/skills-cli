@@ -18,4 +18,14 @@ const (
 
 	// AnnotationSkillCompatibility is the annotation key for compatibility notes.
 	AnnotationSkillCompatibility = "io.agentskills.skill.compatibility"
+
+	// CollectionArtifactType is the OCI artifact type for a skills collection (Image Index).
+	CollectionArtifactType = "application/vnd.agentskills.collection.v1"
+
+	// AnnotationCollectionName is the required annotation key for a collection's unique name.
+	AnnotationCollectionName = "io.agentskills.collection.name"
+
+	// AnnotationSkillRef is the OCI standard annotation for the original image reference
+	// used to identify a skill within a collection descriptor.
+	AnnotationSkillRef = "org.opencontainers.image.ref.name"
 )

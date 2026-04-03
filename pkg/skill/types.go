@@ -47,6 +47,22 @@ type LockedSkill struct {
 	InstalledAt string      `json:"installedAt"`
 }
 
+// CollectionSkillRef represents a skill entry within a fetched collection.
+type CollectionSkillRef struct {
+	Name        string
+	Ref         string // original OCI reference (e.g., ghcr.io/org/skills/my-skill:1.0.0)
+	Digest      string // immutable digest of the skill manifest
+	Version     string
+	Description string
+}
+
+// FetchCollectionResult holds the metadata and skill list from a fetched collection.
+type FetchCollectionResult struct {
+	Name    string
+	Version string
+	Skills  []CollectionSkillRef
+}
+
 // LockSource holds the resolved OCI reference for a locked skill.
 type LockSource struct {
 	Registry   string `json:"registry"`
