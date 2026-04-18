@@ -18,11 +18,12 @@ var additionalSkillsDirs = []string{
 }
 
 // NewRootCmd creates the root command for skills-oci.
-func NewRootCmd() *cobra.Command {
+func NewRootCmd(version string) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "skills-oci",
-		Short: "Manage agent skills as OCI artifacts",
-		Long:  "A CLI tool for packaging, pushing, and pulling agent skills as OCI artifacts following the Agent Skills OCI Artifacts Specification.",
+		Use:     "skills-oci",
+		Short:   "Manage agent skills as OCI artifacts",
+		Long:    "A CLI tool for packaging, pushing, and pulling agent skills as OCI artifacts following the Agent Skills OCI Artifacts Specification.",
+		Version: version,
 	}
 
 	cmd.PersistentFlags().Bool("plain", false, "Disable interactive TUI (plain text output)")

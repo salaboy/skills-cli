@@ -135,17 +135,28 @@ func Push(ctx context.Context, opts PushOptions) (*PushResult, error) {
 		return nil, fmt.Errorf("packing manifest: %w", err)
 	}
 
-	// Tag in local store
+	// Resolve tag: prefer explicit opts.Tag, then fall back to any tag
+	// embedded in opts.Reference (e.g. "docker.io/org/skill:1.0.0"), then
+	// default to "latest".
 	tag := opts.Tag
+	repoRef := opts.Reference
+	if tag == "" {
+		reg, rep, parsedTag := parseReference(opts.Reference)
+		tag = parsedTag
+		repoRef = reg + "/" + rep
+	}
 	if tag == "" {
 		tag = "latest"
 	}
+
+	// Tag in local store
 	if err := store.Tag(ctx, manifestDesc, tag); err != nil {
 		return nil, fmt.Errorf("tagging: %w", err)
 	}
 
-	// 6. Set up remote repository
-	repo, err := remote.NewRepository(opts.Reference)
+	// 6. Set up remote repository — use the tag-free reference so that the
+	// tag passed to oras.Copy is the sole source of truth.
+	repo, err := remote.NewRepository(repoRef)
 	if err != nil {
 		return nil, fmt.Errorf("creating remote repository: %w", err)
 	}
