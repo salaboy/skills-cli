@@ -57,3 +57,92 @@ jobs:
             dist/skills-oci-darwin-arm64
             dist/skills-oci-windows-amd64.exe
             dist/checksums.txt
+
+  update-homebrew:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout homebrew-tap
+        uses: actions/checkout@v4
+        with:
+          repository: salaboy/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Download checksums
+        run: |
+          VERSION=${GITHUB_REF_NAME}
+          curl -sL "https://github.com/salaboy/skills-oci/releases/download/${VERSION}/checksums.txt" \
+            -o checksums.txt
+
+      - name: Update formula
+        run: |
+          VERSION=${GITHUB_REF_NAME}
+          # Strip leading 'v' for the formula version field
+          VERSION_NUM=${VERSION#v}
+
+          # Parse SHA256 values from checksums.txt
+          SHA_DARWIN_AMD64=$(grep "skills-oci-darwin-amd64$" checksums.txt | awk '{print $1}')
+          SHA_DARWIN_ARM64=$(grep "skills-oci-darwin-arm64$" checksums.txt | awk '{print $1}')
+          SHA_LINUX_AMD64=$(grep "skills-oci-linux-amd64$" checksums.txt | awk '{print $1}')
+          SHA_LINUX_ARM64=$(grep "skills-oci-linux-arm64$" checksums.txt | awk '{print $1}')
+
+          echo "VERSION:        ${VERSION_NUM}"
+          echo "darwin-amd64:   ${SHA_DARWIN_AMD64}"
+          echo "darwin-arm64:   ${SHA_DARWIN_ARM64}"
+          echo "linux-amd64:    ${SHA_LINUX_AMD64}"
+          echo "linux-arm64:    ${SHA_LINUX_ARM64}"
+
+          FORMULA="homebrew-tap/Formula/skills-oci.rb"
+          mkdir -p homebrew-tap/Formula
+
+          cat > "${FORMULA}" <<RUBY
+          class SkillsOci < Formula
+            desc "CLI tool for packaging and managing AI agent skills as OCI artifacts"
+            homepage "https://github.com/salaboy/skills-oci"
+            version "${VERSION_NUM}"
+            license "Apache-2.0"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/salaboy/skills-oci/releases/download/${VERSION}/skills-oci-darwin-arm64"
+                sha256 "${SHA_DARWIN_ARM64}"
+              else
+                url "https://github.com/salaboy/skills-oci/releases/download/${VERSION}/skills-oci-darwin-amd64"
+                sha256 "${SHA_DARWIN_AMD64}"
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.arm?
+                url "https://github.com/salaboy/skills-oci/releases/download/${VERSION}/skills-oci-linux-arm64"
+                sha256 "${SHA_LINUX_ARM64}"
+              else
+                url "https://github.com/salaboy/skills-oci/releases/download/${VERSION}/skills-oci-linux-amd64"
+                sha256 "${SHA_LINUX_AMD64}"
+              end
+            end
+
+            def install
+              binary_name = stable.url.split("/").last
+              bin.install binary_name => "skills-oci"
+            end
+
+            test do
+              assert_match "Manage agent skills as OCI artifacts", shell_output("#{bin}/skills-oci --help")
+            end
+          end
+          RUBY
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+          branch: update-skills-oci-${{ github.ref_name }}
+          commit-message: "Update skills-oci formula to ${{ github.ref_name }}"
+          title: "Update skills-oci formula to ${{ github.ref_name }}"
+          body: |
+            Automated update of the `skills-oci` Homebrew formula to ${{ github.ref_name }}.
+
+            Release: https://github.com/salaboy/skills-oci/releases/tag/${{ github.ref_name }}
