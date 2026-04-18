@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -163,7 +164,15 @@ func Pull(ctx context.Context, opts PullOptions) (*PullResult, error) {
 			// Remove any stale symlink or directory before creating the new one.
 			_ = os.Remove(additionalSkillDir)
 			if err := os.Symlink(relTarget, additionalSkillDir); err != nil {
-				return nil, fmt.Errorf("creating symlink %s -> %s: %w", additionalSkillDir, relTarget, err)
+				if !errors.Is(err, os.ErrExist) {
+					return nil, fmt.Errorf("creating symlink %s -> %s: %w", additionalSkillDir, relTarget, err)
+				}
+				// Symlink already exists — check if it already points to the right target.
+				existing, readErr := os.Readlink(additionalSkillDir)
+				if readErr != nil || existing != relTarget {
+					return nil, fmt.Errorf("creating symlink %s -> %s: %w", additionalSkillDir, relTarget, err)
+				}
+				// Already correct, nothing to do.
 			}
 		}
 	}

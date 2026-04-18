@@ -17,15 +17,12 @@ func newAddCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add",
 		Short: "Install a skill from an OCI registry",
-		Long:  "Pulls a skill artifact from a remote container registry, extracts it to the skills directory, and updates skills.json and skills.lock.json.",
+		Long:  "Pulls a skill artifact from a remote container registry, extracts it to .agents/skills, and creates symlinks in .claude/skills, .codex/skills, .cursor/skills, and .gemini/skills.",
 		Example: `  # Install a skill from GHCR
   skills-oci add --ref ghcr.io/myorg/skills/my-skill:1.0.0
 
   # Install from a local registry
   skills-oci add --ref localhost:5000/my-skill:1.0.0 --plain-http
-
-  # Install to .claude/skills instead of .agents/skills
-  skills-oci add --ref ghcr.io/myorg/skills/my-skill:1.0.0 --claude
 
   # Install to a custom directory
   skills-oci add --ref ghcr.io/myorg/skills/my-skill:1.0.0 --output ./custom/path`,
@@ -35,7 +32,7 @@ func newAddCmd() *cobra.Command {
 	cmd.Flags().String("ref", "", "Full OCI reference (e.g., ghcr.io/org/skills/my-skill:1.0.0)")
 	cmd.Flags().String("output", "", "Output directory for skill extraction (overrides default)")
 	cmd.Flags().String("project-dir", ".", "Project directory containing skills.json and skills.lock.json")
-	cmd.Flags().StringArray("additional-base-path", nil, "Extra base directory to also install the skill into (repeatable, e.g., .claude/skills)")
+	cmd.Flags().StringArray("additional-base-path", nil, "Extra base directory to also install the skill into (repeatable)")
 
 	_ = cmd.MarkFlagRequired("ref")
 
@@ -46,31 +43,27 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	ref, _ := cmd.Flags().GetString("ref")
 	output, _ := cmd.Flags().GetString("output")
 	projectDir, _ := cmd.Flags().GetString("project-dir")
-	additionalBasePaths, _ := cmd.Flags().GetStringArray("additional-base-path")
+	extraPaths, _ := cmd.Flags().GetStringArray("additional-base-path")
 	plain, _ := cmd.Flags().GetBool("plain")
 	plainHTTP, _ := cmd.Flags().GetBool("plain-http")
-	claude, _ := cmd.Flags().GetBool("claude")
-	skillsDir := resolveSkillsDir(cmd)
 
-	// If no explicit output, use the resolved skills dir relative to project dir
+	// Always install to .agents/skills and symlink into all tool-specific dirs.
+	additionalBasePaths := additionalSkillsDirs[:]
+	for _, p := range extraPaths {
+		additionalBasePaths = appendIfMissing(additionalBasePaths, p)
+	}
+
 	if output == "" {
-		output = filepath.Join(projectDir, skillsDir)
+		output = filepath.Join(projectDir, defaultSkillsDir)
 	}
 
-	// When --claude is set, ensure .claude/skills is persisted in additionalBasePaths
-	// so that future `load` runs (without --claude) also install to .claude/skills.
-	if claude {
-		additionalBasePaths = appendIfMissing(additionalBasePaths, claudeSkillsDir)
-	}
-
-	// Resolve additional base paths relative to project dir for extraction.
 	additionalOutputDirs := resolveAdditionalDirs(projectDir, additionalBasePaths)
 
 	if plain {
-		return runAddPlain(ref, output, additionalOutputDirs, additionalBasePaths, projectDir, skillsDir, plainHTTP)
+		return runAddPlain(ref, output, additionalOutputDirs, additionalBasePaths, projectDir, defaultSkillsDir, plainHTTP)
 	}
 
-	m := add.NewModel(ref, output, additionalOutputDirs, additionalBasePaths, projectDir, skillsDir, plainHTTP)
+	m := add.NewModel(ref, output, additionalOutputDirs, additionalBasePaths, projectDir, defaultSkillsDir, plainHTTP)
 	p := tea.NewProgram(m)
 	finalModel, err := p.Run()
 	if err != nil {

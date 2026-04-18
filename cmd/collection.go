@@ -146,7 +146,7 @@ func runCollectionAdd(cmd *cobra.Command, args []string) error {
 	projectDir, _ := cmd.Flags().GetString("project-dir")
 	plain, _ := cmd.Flags().GetBool("plain")
 	plainHTTP, _ := cmd.Flags().GetBool("plain-http")
-	skillsDir := resolveSkillsDir(cmd)
+	skillsDir := defaultSkillsDir
 
 	if output == "" {
 		output = filepath.Join(projectDir, skillsDir)

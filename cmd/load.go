@@ -12,12 +12,9 @@ func newLoadCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "load",
 		Short: "Install all skills from skills.json that are not already present",
-		Long:  "Reads skills.json and pulls any skills whose directories are missing from the skills directory. Skills that are already present are skipped.",
+		Long:  "Reads skills.json and pulls any skills whose directories are missing from .agents/skills, then recreates symlinks in the tool-specific directories.",
 		Example: `  # Load all missing skills
   skills-oci load
-
-  # Load skills into .claude/skills
-  skills-oci load --claude
 
   # Load from a local registry
   skills-oci load --plain-http`,
@@ -33,13 +30,12 @@ func runLoad(cmd *cobra.Command, args []string) error {
 	projectDir, _ := cmd.Flags().GetString("project-dir")
 	plain, _ := cmd.Flags().GetBool("plain")
 	plainHTTP, _ := cmd.Flags().GetBool("plain-http")
-	skillsDir := resolveSkillsDir(cmd)
 
 	if plain {
-		return runLoadPlain(projectDir, skillsDir, plainHTTP)
+		return runLoadPlain(projectDir, defaultSkillsDir, plainHTTP)
 	}
 
-	m := load.NewModel(projectDir, skillsDir, plainHTTP)
+	m := load.NewModel(projectDir, defaultSkillsDir, plainHTTP)
 	p := tea.NewProgram(m)
 	finalModel, err := p.Run()
 	if err != nil {

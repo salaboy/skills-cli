@@ -13,12 +13,9 @@ func newRemoveCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "remove",
 		Short: "Remove an installed skill",
-		Long:  "Removes a skill from the skills directory and updates skills.json and skills.lock.json.",
+		Long:  "Removes a skill from .agents/skills and all tool-specific symlink directories, and updates skills.json and skills.lock.json.",
 		Example: `  # Remove a skill by name
-  skills-oci remove --name manage-pull-requests
-
-  # Remove a skill installed with --claude
-  skills-oci remove --name manage-pull-requests --claude`,
+  skills-oci remove --name manage-pull-requests`,
 		RunE: runRemove,
 	}
 
@@ -33,7 +30,6 @@ func newRemoveCmd() *cobra.Command {
 func runRemove(cmd *cobra.Command, args []string) error {
 	name, _ := cmd.Flags().GetString("name")
 	projectDir, _ := cmd.Flags().GetString("project-dir")
-	skillsDir := resolveSkillsDir(cmd)
 
 	// Load and update skills.json
 	m, err := skill.LoadManifest(projectDir)
@@ -69,7 +65,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	fmt.Println("  Updated skills.lock.json")
 
 	// Remove the primary extracted skill directory.
-	skillDir := filepath.Join(projectDir, skillsDir, name)
+	skillDir := filepath.Join(projectDir, defaultSkillsDir, name)
 	if err := os.RemoveAll(skillDir); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("removing skill directory: %w", err)
 	}
