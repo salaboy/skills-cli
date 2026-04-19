@@ -234,6 +234,37 @@ func parseReference(ref string) (registry, repository, tag string) {
 	return registry, repository, tag
 }
 
+// CreateAdditionalLinks creates symlinks (or directory copies on Windows) from
+// each entry in additionalDirs to extractPath. Only missing entries are created;
+// existing ones are left untouched. Useful for repairing links after a fresh
+// clone or after another agent removed its tool directory.
+func CreateAdditionalLinks(extractPath string, additionalDirs []string) error {
+	skillName := filepath.Base(extractPath)
+	for _, additionalDir := range additionalDirs {
+		if err := os.MkdirAll(additionalDir, 0755); err != nil {
+			return fmt.Errorf("creating directory %s: %w", additionalDir, err)
+		}
+		additionalSkillDir := filepath.Join(additionalDir, skillName)
+		if _, err := os.Lstat(additionalSkillDir); err == nil {
+			continue // already exists — skip
+		}
+		if runtime.GOOS == "windows" {
+			if err := copyDir(extractPath, additionalSkillDir); err != nil {
+				return fmt.Errorf("copying skill to %s: %w", additionalSkillDir, err)
+			}
+		} else {
+			relTarget, err := filepath.Rel(additionalDir, extractPath)
+			if err != nil {
+				return fmt.Errorf("computing relative path from %s to %s: %w", additionalDir, extractPath, err)
+			}
+			if err := os.Symlink(relTarget, additionalSkillDir); err != nil {
+				return fmt.Errorf("creating symlink %s -> %s: %w", additionalSkillDir, relTarget, err)
+			}
+		}
+	}
+	return nil
+}
+
 // copyDir recursively copies src to dst. Used on Windows where symlinks are
 // not always available without elevated privileges.
 func copyDir(src, dst string) error {

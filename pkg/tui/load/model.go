@@ -183,7 +183,26 @@ func LoadSkills(projectDir, skillsDir string, plainHTTP bool, onStatus func(stri
 	for _, s := range manifest.Skills {
 		skillDir := filepath.Join(outputDir, s.Name)
 		if _, err := os.Stat(skillDir); err == nil {
-			skipped = append(skipped, s.Name)
+			// Primary skill directory exists. Check that every additional
+			// symlink/copy is also present; repair any that are missing.
+			var missingDirs []string
+			for _, base := range s.AdditionalBasePaths {
+				additionalSkillDir := filepath.Join(projectDir, base, s.Name)
+				if _, lstatErr := os.Lstat(additionalSkillDir); os.IsNotExist(lstatErr) {
+					missingDirs = append(missingDirs, filepath.Join(projectDir, base))
+				}
+			}
+			if len(missingDirs) == 0 {
+				skipped = append(skipped, s.Name)
+				continue
+			}
+			if onStatus != nil {
+				onStatus(fmt.Sprintf("Repairing symlinks for %s", s.Name))
+			}
+			if err := oci.CreateAdditionalLinks(skillDir, missingDirs); err != nil {
+				return installed, skipped, fmt.Errorf("repairing symlinks for %s: %w", s.Name, err)
+			}
+			installed = append(installed, s.Name)
 			continue
 		}
 
