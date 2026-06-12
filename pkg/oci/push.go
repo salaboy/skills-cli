@@ -112,6 +112,9 @@ func Push(ctx context.Context, opts PushOptions) (*PushResult, error) {
 		MediaType: ContentMediaType,
 		Digest:    digest.FromBytes(archiveBytes),
 		Size:      int64(len(archiveBytes)),
+		Annotations: map[string]string{
+			ocispec.AnnotationTitle: sd.Config.Name + ".tar.gz",
+		},
 	}
 	if err := store.Push(ctx, layerDesc, bytes.NewReader(archiveBytes)); err != nil {
 		return nil, fmt.Errorf("storing layer: %w", err)
